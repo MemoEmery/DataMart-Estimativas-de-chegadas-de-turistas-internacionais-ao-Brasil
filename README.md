@@ -82,3 +82,60 @@ ORDER BY l.uf_destino, total_turistas DESC;
 
 ---
 🔧 **Tecnologias Utilizadas:** PostgreSQL 16+, pgAdmin 4 (ERD Tool).
+
+## 📖 Dicionário de Dados (Data Dictionary)
+
+Esta seção detalha o significado de cada tabela, coluna, chaves de relacionamento e as regras de negócio aplicadas às métricas do Data Mart.
+
+---
+
+### 1. Tabela: `dim_localidade`
+Esta dimensão armazena o contexto geográfico da viagem, mapeando o ponto de origem internacional e o ponto de entrada no território brasileiro.
+
+| Nome da Coluna | Tipo de Dado | Tipo de Chave | Descrição / Significado | Exemplo |
+| :--- | :--- | :--- | :--- | :--- |
+| `id_localidade` | SERIAL | PK (Primary Key) | Chave substituta (*Surrogate Key*) gerada automaticamente para identificar unicamente a combinação de origem e destino. | `1`, `2`, `3` |
+| `pais_origem` | VARCHAR(100) | Atributo | O país onde o turista internacional possui residência permanente (origem do fluxo). | `Argentina`, `França` |
+| `uf_destino` | VARCHAR(100) | Atributo | A Unidade da Federação (Estado brasileiro) que serviu como porta de entrada principal ou destino registrado do turista. | `PE`, `RJ`, `SP` |
+
+---
+
+### 2. Tabela: `dim_via_acesso`
+Esta dimensão categoriza o meio de transporte utilizado pelo turista para cruzar a fronteira e entrar no Brasil.
+
+| Nome da Coluna | Tipo de Dado | Tipo de Chave | Descrição / Significado | Exemplo |
+| :--- | :--- | :--- | :--- | :--- |
+| `id_via_acesso` | SERIAL | PK (Primary Key) | Chave substituta usada para indexar e identificar unicamente o meio de transporte. | `1`, `2` |
+| `descricao_via` | VARCHAR(100) | Atributo | Descrição textual do meio de transporte utilizado na fronteira. | `Aérea`, `Terrestre`, `Marítima`, `Fluvial` |
+
+---
+
+### 3. Tabela: `dim_tempo`
+Esta dimensão estabelece o contexto cronológico dos eventos, essencial para análises de sazonalidade, séries temporais e comparações ano a ano.
+
+| Nome da Coluna | Tipo de Dado | Tipo de Chave | Descrição / Significado | Exemplo |
+| :--- | :--- | :--- | :--- | :--- |
+| `id_tempo` | SERIAL | PK (Primary Key) | Chave substituta para indexação temporal exclusiva deste modelo. | `10`, `11` |
+| `mes` | VARCHAR(50) | Atributo | O nome por extenso do mês em que a chegada do turista foi registrada. | `Janeiro`, `Fevereiro` |
+| `ano` | INTEGER | Atributo | O ano civil com quatro dígitos correspondente ao registro. | `2023`, `2024` |
+
+---
+
+### 4. Tabela: `fato_chegadas`
+É a tabela central do modelo estrela. Ela não armazena textos descritivos, apenas as chaves numéricas que apontam para os contextos (dimensões) e os fatos numéricos (métricas).
+
+| Nome da Coluna | Tipo de Dado | Tipo de Chave | Descrição / Significado |
+| :--- | :--- | :--- | :--- |
+| `id_fato` | SERIAL | PK (Primary Key) | Identificador exclusivo de cada linha de fato registrada no banco. |
+| `id_localidade` | INTEGER | FK (Foreign Key) | Chave estrangeira que se conecta à tabela `dim_localidade`. Determina *quem* está vindo e *para onde* vai. |
+| `id_via_acesso` | INTEGER | FK (Foreign Key) | Chave estrangeira que se conecta à tabela `dim_via_acesso`. Determina *como* o turista chegou. |
+| `id_tempo` | INTEGER | FK (Foreign Key) | Chave estrangeira que se conecta à tabela `dim_tempo`. Determina *quando* a viagem ocorreu. |
+
+#### 📊 Métricas e Regras de Negócio (Campos Quantitativos)
+
+*   ### `quantidade_chegadas` *(Tipo: INTEGER)*
+    *   **O que significa:** É a métrica base do projeto. Representa a estimativa calculada do volume físico de indivíduos com nacionalidade estrangeira que cruzaram a fronteira brasileira e iniciaram uma estadia no país dentro do mês e ano referenciados.
+    *   **Regra de Agregação:** Esta métrica é **totalmente aditiva**. Isso significa que ela pode ser somada com segurança em qualquer dimensão (Ex: Somar por Ano, somar por Via de Acesso, somar por País de Origem) para gerar indicadores consolidados e KPIs de turismo.
+
+---
+
