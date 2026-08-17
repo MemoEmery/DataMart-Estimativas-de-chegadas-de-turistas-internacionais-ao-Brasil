@@ -9,10 +9,6 @@ Abaixo está a representação visual das conexões entre a tabela fato e suas r
 <img width="1153" height="745" alt="Estimativas de chegadas de turistas internacionais ao Brasil- Modelo Dimencional pgerd" src="https://github.com/user-attachments/assets/1cce292a-ea10-48ec-91a8-b1b28f29cad0" />
 
 
-> 💡 **Nota:** Para exibir a imagem acima, salve o print da tela do seu diagrama na mesma pasta deste arquivo README com o nome exato de `modelo_dimensional.png`.
-
----
-
 ## 📐 Estrutura Arquitetural (Star Schema)
 
 A modelagem foi dividida entre tabelas de contexto (**Dimensões**) e uma tabela centralizadora de métricas numéricas (**Fato**).
