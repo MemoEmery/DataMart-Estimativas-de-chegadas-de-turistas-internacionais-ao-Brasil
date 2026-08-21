@@ -6,8 +6,7 @@ Este projeto consiste em um Data Mart modelado em arquitetura dimensional (Star 
 
 Abaixo está a representação visual das conexões entre a tabela fato, suas dimensões e a camada de ingestão isolada (Staging), gerada a partir da ferramenta ERD Tool do pgAdmin 4:
 
-<img <img width="1150" height="990" alt="DataMart - Estimativas de chegadas de turistas internacionais ao Brasil pgerd" src="https://github.com/user-attachments/assets/1c996d02-07d8-4cbf-91fe-aaa0e19a223d" />
-/>
+<img width="1150" height="990" alt="DataMart - Estimativas de chegadas de turistas internacionais ao Brasil pgerd" src="https://github.com/user-attachments/assets/1c996d02-07d8-4cbf-91fe-aaa0e19a223d" />
 
 ---
 
