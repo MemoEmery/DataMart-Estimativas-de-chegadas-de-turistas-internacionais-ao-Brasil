@@ -1,0 +1,13 @@
+# Arquivos temporários e de dados do Power BI
+*.tmp
+*.pbit
+*.pbix.nested
+
+# Logs e arquivos locais do Pentaho
+*.log
+.spoonrc
+pentaho.log
+
+# Arquivos do Sistema Operacional 
+.DS_Store
+Thumbs.db
