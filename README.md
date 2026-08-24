@@ -14,7 +14,7 @@ Abaixo está a representação visual das conexões entre a tabela fato, suas di
 
 
 
-<img width="1150" height="990" alt="DataMart - Estimativas de chegadas de turistas internacionais ao Brasil pgerd" src="https://github.com/user-attachments/assets/1c996d02-07d8-4cbf-91fe-aaa0e19a223d" />
+ <img width="1150" height="990" alt="DataMart - Estimativas de chegadas de turistas internacionais ao Brasil pgerd" src="https://github.com/user-attachments/assets/18458b84-7d75-4632-a5d3-e59c849be36d" />
 
 
 
