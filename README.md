@@ -1,293 +1,263 @@
 # Data Mart de Estimativas de Chegadas de Turistas Internacionais ao Brasil
 
+Data Mart em arquitetura dimensional (Star Schema / Modelo Estrela), desenvolvido no **PostgreSQL** (pgAdmin 4), com carga da staging via **Pentaho Data Integration (PDI)** e visualização em **Power BI**. O objetivo é consolidar as estimativas de chegadas de turistas internacionais ao Brasil (janeiro/2022 a junho/2026) para análises de BI e consultas OLAP.
 
+## Diagrama do Modelo Dimensional
 
-Este projeto consiste em um Data Mart modelado em arquitetura dimensional (Star Schema / Modelo Estrela) desenvolvido no **PostgreSQL (via pgAdmin 4)**. O objetivo é consolidar e estruturar os dados brutos de estimativas de chegadas de turistas internacionais ao Brasil para facilitar análises analíticas (Business Intelligence e consultas OLAP).
+Diagrama gerado pela ERD Tool do pgAdmin 4, com a tabela fato, as quatro dimensões e a camada de staging:
 
+![Diagrama do Data Mart](DataMart_-_Estimativas_de_chegadas_de_turistas_internacionais_ao_Brasil_pgerd.png)
 
+## Fonte dos dados
 
-## 📊 Diagrama do Modelo Dimensional
+Cinco arquivos CSV (delimitador `;`, codificação LATIN1/WIN1252), um por ano:
 
+| Arquivo | Período | Linhas | Total de chegadas |
+| :--- | :--- | ---: | ---: |
+| `chegadas_2022.csv` | 2022 | 54.684 | 3.630.031 |
+| `chegadas_2023.csv` | 2023 | 34.764 | 5.908.341 |
+| `chegadas_2024.csv` | 2024 | 22.856 | 6.773.619 |
+| `chegadas-2025.csv` | 2025 | 24.800 | 9.287.196 |
+| `base_chegadas_2026_acum_06_junho.csv` | jan a jun/2026 | 12.859 | 5.261.733 |
+| **Total** | | **149.963** | **30.860.920** |
 
+Os arquivos de 2022 a 2024 têm 12 colunas (com códigos e continente). Os de 2025 e 2026 têm só 6 colunas (via, UF, país, mês, ano e chegadas). Por isso os cinco foram consolidados em um único CSV no formato da staging (`staging_turistas_internacionais.csv`, UTF-8), com as colunas ausentes em branco.
 
-Abaixo está a representação visual das conexões entre a tabela fato, suas dimensões e a camada de ingestão isolada (Staging), gerada a partir da ferramenta ERD Tool do pgAdmin 4:
+## Arquitetura e fluxo de carga
 
+```
+CSVs (5 arquivos)
+      │  consolidação em 1 CSV (12 colunas, UTF-8)
+      ▼
+Pentaho (PDI): CSV file input ──► Table output
+      ▼
+PostgreSQL: staging_turistas_internacionais   (149.963 linhas)
+      │  scripts SQL: 04_carga_dim_tempo.sql e 05_correcoes_data_mart.sql
+      ▼
+dim_tempo · dim_pais_origem · dim_uf_destino · dim_via_acesso
+      ▼
+fato_chegadas   (72.670 linhas)
+      ▼
+Power BI (dashboard)
+```
 
-
- <img width="1150" height="990" alt="DataMart - Estimativas de chegadas de turistas internacionais ao Brasil pgerd" src="https://github.com/user-attachments/assets/18458b84-7d75-4632-a5d3-e59c849be36d" />
-
-
-
----
-
-
-
-## 🏗️ Arquitetura e Ingestão de Dados
-
-
-
-A arquitetura do Data Mart foi dividida em duas camadas principais dentro do PostgreSQL:
-
-
+| Etapa | Ferramenta | O que faz |
+| :--- | :--- | :--- |
+| Ingestão | Pentaho (PDI) | Lê o CSV consolidado e grava na staging, com `Truncate table` ligado para não duplicar |
+| Dimensão tempo | `04_carga_dim_tempo.sql` | Gera os 60 meses de jan/2022 a dez/2026 com `generate_series` |
+| Padronização, dimensões e fato | `05_correcoes_data_mart.sql` | Padroniza textos na staging, recria as dimensões e recarrega a fato |
+| Visualização | Power BI | Importa as 5 tabelas do modelo e monta o dashboard |
 
 ### 1. Camada de Staging (`staging_turistas_internacionais`)
 
-A tabela de staging atua como **Landing Zone (Área de Pouso)** para a carga dos arquivos brutos em formato CSV (codificação `WIN1252` ou `UTF8`, delimitados por `;`).
+Área de pouso dos dados brutos. Todas as colunas são `VARCHAR(150)`, o que evita falhas de importação por tipo. As conversões (`CAST`) e o mapeamento de chaves substitutas acontecem nos scripts SQL.
 
-
-
-* **Estratégia de Ingestão:** Todas as colunas foram modeladas como `VARCHAR(150)` flexível. Essa abordagem garante a integridade na ingestão direta e evita falhas físicas de importação (*type mismatch*, parsing de datas ou inteiros).
-
-* **Tratamento no Pipeline:** Os dados dessa tabela são consumidos pelas transformações no Pentaho Data Integration (PDI) ou scripts SQL, onde são aplicadas as regras de limpeza, conversão de tipos (*CAST*) e mapeamento de chaves substitutas (*Surrogate Keys*).
-
-
-
-| Coluna Staging | Tipo | Descrição / Destino no Data Mart |
-
+| Coluna da staging | Tipo | Destino no Data Mart |
 | :--- | :--- | :--- |
-
-| `continente` | VARCHAR(150) | Nome do continente de origem |
-
-| `cod_continente` | VARCHAR(150) | Código numérico do continente |
-
-| `nome_pais_correto` | VARCHAR(150) | Mapeado para `dim_localidade.pais_origem` |
-
-| `cod_pais` | VARCHAR(150) | Código do país de origem |
-
-| `uf` | VARCHAR(150) | Mapeado para `dim_localidade.uf_destino` |
-
-| `cod_uf` | VARCHAR(150) | Código do estado de destino |
-
-| `via_acesso` | VARCHAR(150) | Mapeado para `dim_via_acesso.descricao_via` |
-
-| `cod_via` | VARCHAR(150) | Código do meio de transporte/acesso |
-
-| `ano` | VARCHAR(150) | Convertido para `INTEGER` em `dim_tempo.ano` |
-
-| `mes` | VARCHAR(150) | Mapeado para `dim_tempo.mes` |
-
-| `cod_mes` | VARCHAR(150) | Código numérico do mês |
-
-| `chegadas` | VARCHAR(150) | Convertido para `INTEGER` em `fato_chegadas.quantidade_chegadas` |
-
-
-
----
-
-
+| continente | VARCHAR(150) | `dim_pais_origem.continente` (só existe em 2022 a 2024) |
+| cod_continente | VARCHAR(150) | Não utilizado |
+| nome_pais_correto | VARCHAR(150) | `dim_pais_origem.pais_origem` |
+| cod_pais | VARCHAR(150) | Não utilizado (os códigos mudam entre os anos) |
+| uf | VARCHAR(150) | `dim_uf_destino.uf_destino` |
+| cod_uf | VARCHAR(150) | Não utilizado |
+| via_acesso | VARCHAR(150) | `dim_via_acesso.descricao_via` |
+| cod_via | VARCHAR(150) | Não utilizado |
+| ano | VARCHAR(150) | `dim_tempo.ano` (convertido para INTEGER) |
+| mes | VARCHAR(150) | `dim_tempo.mes` |
+| cod_mes | VARCHAR(150) | Não utilizado (só existe em 2022 a 2024) |
+| chegadas | VARCHAR(150) | `fato_chegadas.quantidade_chegadas` (convertido para INTEGER) |
 
 ### 2. Camada Multidimensional (Star Schema)
 
+| Tabela | Chave | Colunas |
+| :--- | :--- | :--- |
+| `dim_tempo` | `id_tempo` (SERIAL, PK) | ano, mes, mes_num, mes_abrev, bimestre, trimestre, semestre, ano_mes, data_ref |
+| `dim_pais_origem` | `id_pais_origem` (SERIAL, PK) | pais_origem, continente |
+| `dim_uf_destino` | `id_uf_destino` (SERIAL, PK) | uf_destino, regiao, detalhada |
+| `dim_via_acesso` | `id_via_acesso` (SERIAL, PK) | descricao_via |
+| `fato_chegadas` | PK composta: `id_pais_origem`, `id_uf_destino`, `id_via_acesso`, `id_tempo` | quantidade_chegadas |
 
+Contagem de registros após a carga: `dim_tempo` 60, `dim_pais_origem` 212, `dim_uf_destino` 26, `dim_via_acesso` 4 e `fato_chegadas` 72.670.
 
-A modelagem final do Data Mart foi construída de forma otimizada, removendo colunas técnicas desnecessárias para garantir máxima performance em consultas analíticas.
+## Dicionário de Dados
 
+### `dim_tempo`
+Granularidade mensal, de janeiro/2022 a dezembro/2026.
 
-
-#### 1. `dim_localidade`
-
-* `id_localidade` (SERIAL, PK): Identificador único da combinação de origem e destino.
-
-* `pais_origem` (VARCHAR): País de residência permanente do turista.
-
-* `uf_destino` (VARCHAR): Estado (Unidade da Federação) por onde o turista entrou/visitou no Brasil.
-
-
-
-#### 2. `dim_via_acesso`
-
-* `id_via_acesso` (SERIAL, PK): Identificador único do meio de transporte.
-
-* `descricao_via` (VARCHAR): Tipo de transporte (Ex: Aérea, Terrestre, Marítima, Fluvial).
-
-
-
-#### 3. `dim_tempo`
-
-* `id_tempo` (SERIAL, PK): Identificador único do período.
-
-* `ano` (INTEGER): Ano da chegada.
-
-* `mes` (VARCHAR): Nome do mês correspondente.
-
-
-
-#### 4. `fato_chegadas`
-
-* `id_localidade` (INTEGER, FK): Relacionamento com `dim_localidade`.
-
-* `id_via_acesso` (INTEGER, FK): Relacionamento com `dim_via_acesso`.
-
-* `id_tempo` (INTEGER, FK): Relacionamento com `dim_tempo`.
-
-* `quantidade_chegadas` (INTEGER): Métrica contendo a estimativa de turistas que entraram no país.
-
-
-
----
-
-
-
-## 📖 Dicionário de Dados (Data Dictionary)
-
-
-
-### 1. Tabela: `dim_localidade`
-
-Esta dimensão armazena o contexto geográfico da viagem, mapeando o ponto de origem internacional e o ponto de entrada no território brasileiro.
-
-
-
-| Nome da Coluna | Tipo de Dado | Tipo de Chave | Descrição / Significado | Exemplo |
-
+| Coluna | Tipo | Chave | Descrição | Exemplo |
 | :--- | :--- | :--- | :--- | :--- |
+| id_tempo | SERIAL | PK | Chave substituta, em ordem cronológica | 1, 2, 3 |
+| ano | INTEGER | Atributo | Ano civil | 2024 |
+| mes | VARCHAR(50) | Atributo | Nome do mês por extenso | Março |
+| mes_num | SMALLINT | Atributo | Número do mês (usado para ordenar o mês no Power BI) | 3 |
+| mes_abrev | CHAR(3) | Atributo | Abreviação do mês | Mar |
+| bimestre | SMALLINT | Atributo | Bimestre do ano (1 a 6) | 2 |
+| trimestre | SMALLINT | Atributo | Trimestre do ano (1 a 4) | 1 |
+| semestre | SMALLINT | Atributo | Semestre do ano (1 ou 2) | 1 |
+| ano_mes | CHAR(7) | Atributo | Ano e mês no formato AAAA-MM | 2024-03 |
+| data_ref | DATE | Atributo | Primeiro dia do mês (usada como tabela de datas no Power BI) | 2024-03-01 |
 
-| `id_localidade` | SERIAL | PK (Primary Key) | Chave substituta (*Surrogate Key*) gerada automaticamente para identificar unicamente a combinação de origem e destino. | `1`, `2`, `3` |
+Restrição `UNIQUE (ano, mes)`, que impede meses duplicados.
 
-| `pais_origem` | VARCHAR(100) | Atributo | O país onde o turista internacional possui residência permanente (origem do fluxo). | `Argentina`, `França` |
+### `dim_pais_origem`
+País de residência permanente do turista e seu continente.
 
-| `uf_destino` | VARCHAR(100) | Atributo | A Unidade da Federação (Estado brasileiro) que serviu como porta de entrada principal ou destino registrado do turista. | `PE`, `RJ`, `SP` |
-
-
-
----
-
-
-
-### 2. Tabela: `dim_via_acesso`
-
-Esta dimensão categoriza o meio de transporte utilizado pelo turista para cruzar a fronteira e entrar no Brasil.
-
-
-
-| Nome da Coluna | Tipo de Dado | Tipo de Chave | Descrição / Significado | Exemplo |
-
+| Coluna | Tipo | Chave | Descrição | Exemplo |
 | :--- | :--- | :--- | :--- | :--- |
+| id_pais_origem | SERIAL | PK | Chave substituta | 1, 2 |
+| pais_origem | VARCHAR(100) | Atributo | Nome do país de origem | Argentina |
+| continente | VARCHAR(60) | Atributo | Continente de origem | América do Sul |
 
-| `id_via_acesso` | SERIAL | PK (Primary Key) | Chave substituta usada para indexar e identificar unicamente o meio de transporte. | `1`, `2` |
+Os grupos "Outros países" de 2022 a 2024 foram separados por continente (por exemplo, "Outros países - Europa"), porque o mesmo nome aparecia em 5 continentes. O continente dos 114 países que só existem em 2025 e 2026 foi atribuído por mapeamento manual no script `05_correcoes_data_mart.sql`.
 
-| `descricao_via` | VARCHAR(100) | Atributo | Descrição textual do meio de transporte utilizado na fronteira. | `Aérea`, `Terrestre`, `Marítima`, `Fluvial` |
+### `dim_uf_destino`
+Unidade da Federação por onde o turista entrou no Brasil.
 
-
-
----
-
-
-
-### 3. Tabela: `dim_tempo`
-
-Esta dimensão estabelece o contexto cronológico dos eventos, essencial para análises de sazonalidade, séries temporais e comparações ano a ano.
-
-
-
-| Nome da Coluna | Tipo de Dado | Tipo de Chave | Descrição / Significado | Exemplo |
-
+| Coluna | Tipo | Chave | Descrição | Exemplo |
 | :--- | :--- | :--- | :--- | :--- |
+| id_uf_destino | SERIAL | PK | Chave substituta | 1, 2 |
+| uf_destino | VARCHAR(100) | Atributo | Nome do estado | Pernambuco |
+| regiao | VARCHAR(30) | Atributo | Região do Brasil | Nordeste |
+| detalhada | BOOLEAN | Atributo | `FALSE` para "Outras Unidades da Federação", `TRUE` para estados individuais | TRUE |
 
-| `id_tempo` | SERIAL | PK (Primary Key) | Chave substituta para indexação temporal exclusiva deste modelo. | `10`, `11` |
+### `dim_via_acesso`
+Meio de transporte usado para entrar no Brasil.
 
-| `mes` | VARCHAR(50) | Atributo | O nome por extenso do mês em que a chegada do turista foi registrada. | `Janeiro`, `Fevereiro` |
+| Coluna | Tipo | Chave | Descrição | Exemplo |
+| :--- | :--- | :--- | :--- | :--- |
+| id_via_acesso | SERIAL | PK | Chave substituta | 1, 2 |
+| descricao_via | VARCHAR(100) | Atributo | Meio de transporte | Aérea, Terrestre, Marítima, Fluvial |
 
-| `ano` | INTEGER | Atributo | O ano civil com quatro dígitos correspondente ao registro. | `2023`, `2024` |
+### `fato_chegadas`
+Tabela central do modelo estrela, com as chaves das dimensões e a métrica.
 
-
-
----
-
-
-
-### 4. Tabela: `fato_chegadas`
-
-É a tabela central do modelo estrela. Ela armazena exclusivamente as chaves numéricas que apontam para as dimensões e a métrica quantitativa do evento.
-
-
-
-| Nome da Coluna | Tipo de Dado | Tipo de Chave | Descrição / Significado |
-
+| Coluna | Tipo | Chave | Descrição |
 | :--- | :--- | :--- | :--- |
+| id_pais_origem | INTEGER | PK / FK | Liga a `dim_pais_origem`: de onde vem o turista |
+| id_uf_destino | INTEGER | PK / FK | Liga a `dim_uf_destino`: por onde entra |
+| id_via_acesso | INTEGER | PK / FK | Liga a `dim_via_acesso`: como chega |
+| id_tempo | INTEGER | PK / FK | Liga a `dim_tempo`: quando chega |
+| quantidade_chegadas | INTEGER | Métrica | Estimativa de turistas internacionais que chegaram |
 
-| `id_localidade` | INTEGER | FK (Foreign Key) | Chave estrangeira que se conecta à tabela `dim_localidade`. Determina *quem* está vindo e *para onde* vai. |
+## Métricas e regras de negócio
 
-| `id_via_acesso` | INTEGER | FK (Foreign Key) | Chave estrangeira que se conecta à tabela `dim_via_acesso`. Determina *como* o turista chegou. |
+- **`quantidade_chegadas`** é a métrica base: a estimativa de turistas que cruzaram a fronteira no mês e ano referenciados.
+- **Regra de agregação:** métrica totalmente aditiva, somada por qualquer dimensão (ano, via, país, estado, continente).
+- **Chaves repetidas na fonte:** os CSVs têm várias linhas com a mesma combinação de país, UF, via, ano e mês. A carga da fato usa `SUM` com `GROUP BY`, e os totais por ano batem exatamente com a soma dos CSVs.
+- **Linhas com zero chegadas** (55.925 na fonte, quase todas em 2022 e 2023) não são carregadas na fato. Os totais não mudam.
 
-| `id_tempo` | INTEGER | FK (Foreign Key) | Chave estrangeira que se conecta à tabela `dim_tempo`. Determina *quando* a viagem ocorreu. |
+## Qualidade dos dados: tratamentos aplicados
 
-| `quantidade_chegadas` | INTEGER | Métrica | Volume físico de indivíduos com nacionalidade estrangeira que cruzaram a fronteira brasileira. |
+| Problema encontrado | Tratamento |
+| :--- | :--- |
+| Via de acesso com 6 valores (Aéreo/Aérea e Marítimo/Marítima em 2023) | Padronizada para Aérea e Marítima, resultando em 4 vias |
+| Março escrito de três formas (Março, março e Marco) | O join com `dim_tempo` ignora caixa e cedilha |
+| "Outros países" repetido em 5 continentes | Renomeado com o continente, por exemplo "Outros países - África" |
+| Arquivos de 2025 e 2026 sem continente | Mapeamento manual de 114 países para o continente |
+| Coluna de UF com `character(2)` | Alterada para `VARCHAR(100)` |
+| Meses duplicados na `dim_tempo` carregada por `DISTINCT` | `dim_tempo` gerada por `generate_series`, com `UNIQUE (ano, mes)` |
 
+### Limitações da fonte (importante para a análise)
 
+- **A granularidade muda em 2025.** Em 2022 a 2024, a UF aparece agrupada em "Outras Unidades da Federação" e há países agrupados em "Outros países...". A partir de 2025 a fonte detalha estados e países. Análises por estado são confiáveis só para 2025 e 2026.
+- **2026 vai só até junho.** Para comparar anos, use os mesmos meses (janeiro a junho).
+- **Piauí e Tocantins não aparecem em nenhum dos arquivos**, por isso a `dim_uf_destino` tem 26 registros (25 estados e o grupo "Outras Unidades da Federação").
+- Os códigos (`cod_pais`, `cod_uf` etc.) mudam entre os anos e só existem até 2024, então os nomes são usados como chave.
 
-#### 📊 Métricas e Regras de Negócio
+## Validação da carga
 
-* **`quantidade_chegadas` (INTEGER):** É a métrica base do projeto. Representa a estimativa calculada do volume de turistas que cruzaram a fronteira e iniciaram estadia no país dentro do mês e ano referenciados.
+Total de chegadas por ano na `fato_chegadas`, conferido contra a soma dos CSVs:
 
-* **Regra de Agregação:** Métrica **totalmente aditiva**, podendo ser somada de forma simples e segura através de qualquer dimensão (por Ano, por Via de Acesso, por País de Origem).
-
-
-
----
-
-
-
-## 📊 Exemplos de Consultas Analíticas (OLAP)
-
-
-
-### 1. Total de turistas por Ano e por País de Origem
+| Ano | Total |
+| :--- | ---: |
+| 2022 | 3.630.031 |
+| 2023 | 5.908.341 |
+| 2024 | 6.773.619 |
+| 2025 | 9.287.196 |
+| 2026 (jan a jun) | 5.261.733 |
 
 ```sql
+SELECT t.ano, SUM(f.quantidade_chegadas) AS total
+FROM fato_chegadas f
+JOIN dim_tempo t ON t.id_tempo = f.id_tempo
+GROUP BY t.ano
+ORDER BY t.ano;
+```
 
-SELECT 
+## Dashboard no Power BI
 
+Conexão: PostgreSQL, modo **Importar**, com as 5 tabelas do modelo (sem a staging). Medida principal:
+
+```
+Total Chegadas = SUM('public fato_chegadas'[quantidade_chegadas])
+```
+
+Visuais do dashboard:
+
+| Visual | Campos | O que mostra |
+| :--- | :--- | :--- |
+| Cartão | Total Chegadas | Total de chegadas no período |
+| Gráfico de linhas | `ano_mes` e Total Chegadas | Evolução mensal e sazonalidade |
+| Segmentação de dados | `ano` | Filtro por ano, que atualiza todos os visuais |
+| Colunas | `continente` e Total Chegadas | Chegadas por continente de origem |
+| Rosca | `descricao_via` e Total Chegadas | Participação de cada via de acesso |
+| Barras | `pais_origem` e Total Chegadas (filtro Top 10) | Principais países de origem |
+
+Configurações do modelo: `mes` classificado por `mes_num`, e `dim_tempo` marcada como tabela de datas, usando `data_ref`.
+
+## Exemplos de consultas analíticas (OLAP)
+
+**1. Total de turistas por ano e por país de origem**
+```sql
+SELECT
     t.ano,
-
-    l.pais_origem,
-
+    p.pais_origem,
     SUM(f.quantidade_chegadas) AS total_turistas
-
 FROM fato_chegadas f
-
-JOIN dim_tempo t ON f.id_tempo = t.id_tempo
-
-JOIN dim_localidade l ON f.id_localidade = l.id_localidade
-
-GROUP BY t.ano, l.pais_origem
-
+JOIN dim_tempo t        ON f.id_tempo = t.id_tempo
+JOIN dim_pais_origem p  ON f.id_pais_origem = p.id_pais_origem
+GROUP BY t.ano, p.pais_origem
 ORDER BY total_turistas DESC;
-
 ```
 
-
-
-### 2. Preferência de Via de Acesso por Estado de Destino
-
+**2. Preferência de via de acesso por estado de destino (a partir de 2025)**
 ```sql
-
-SELECT 
-
-    l.uf_destino,
-
+SELECT
+    u.uf_destino,
     v.descricao_via,
-
     SUM(f.quantidade_chegadas) AS total_turistas
-
 FROM fato_chegadas f
-
-JOIN dim_localidade l ON f.id_localidade = l.id_localidade
-
-JOIN dim_via_acesso v ON f.id_via_acesso = v.id_via_acesso
-
-GROUP BY l.uf_destino, v.descricao_via
-
-ORDER BY l.uf_destino, total_turistas DESC;
-
+JOIN dim_uf_destino u   ON f.id_uf_destino = u.id_uf_destino
+JOIN dim_via_acesso v   ON f.id_via_acesso = v.id_via_acesso
+JOIN dim_tempo t        ON f.id_tempo = t.id_tempo
+WHERE t.ano >= 2025
+GROUP BY u.uf_destino, v.descricao_via
+ORDER BY u.uf_destino, total_turistas DESC;
 ```
 
+**3. Chegadas por continente e trimestre**
+```sql
+SELECT
+    t.ano,
+    t.trimestre,
+    p.continente,
+    SUM(f.quantidade_chegadas) AS total_turistas
+FROM fato_chegadas f
+JOIN dim_tempo t        ON f.id_tempo = t.id_tempo
+JOIN dim_pais_origem p  ON f.id_pais_origem = p.id_pais_origem
+GROUP BY t.ano, t.trimestre, p.continente
+ORDER BY t.ano, t.trimestre, total_turistas DESC;
+```
 
+## Arquivos do projeto
 
----
+| Arquivo | Descrição |
+| :--- | :--- |
+| `04_carga_dim_tempo.sql` | Gera e carrega a `dim_tempo` mensal e recarrega a fato |
+| `05_correcoes_data_mart.sql` | Padroniza a staging, recria as dimensões e recarrega a fato |
+| `staging_turistas_internacionais.csv` | CSV consolidado (12 colunas, UTF-8) usado na carga da staging |
+| `dashboard_turismo.pbix` | Dashboard do Power BI |
 
+## Tecnologias utilizadas
 
-
-🔧 **Tecnologias Utilizadas:** PostgreSQL 16+, pgAdmin 4 (ERD Tool), Pentaho Data Integration (PDI), Power BI.
-
-Ajuste o readme de acordo com as ultimas atualizações
+PostgreSQL 16+, pgAdmin 4 (ERD Tool), Pentaho Data Integration (PDI) e Power BI Desktop.
