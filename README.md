@@ -6,8 +6,7 @@ Data Mart em arquitetura dimensional (Star Schema / Modelo Estrela), desenvolvid
 
 Diagrama gerado pela ERD Tool do pgAdmin 4, com a tabela fato, as quatro dimensões e a camada de staging:
 
-![Diagrama do Data Mart](<img width="1450" height="1303" alt="DataMart - Estimativas de chegadas de turistas internacionais ao Brasil pgerd" src="https://github.com/user-attachments/assets/3b52ed0e-08af-4cc0-bf98-abcd49b21098" />
-)
+[Diagrama do Data Mart] <img width="1450" height="1303" alt="DataMart - Estimativas de chegadas de turistas internacionais ao Brasil pgerd" src="https://github.com/user-attachments/assets/3b52ed0e-08af-4cc0-bf98-abcd49b21098" />
 
 ## Fonte dos dados
 
